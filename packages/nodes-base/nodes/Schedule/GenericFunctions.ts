@@ -1,6 +1,6 @@
-import type { IDataObject } from 'n8n-workflow';
 import moment from 'moment-timezone';
-import type { IRecurrenceRule } from './SchedulerInterface';
+import { type CronExpression, randomInt } from 'n8n-workflow';
+import type { IRecurrenceRule, ScheduleInterval } from './SchedulerInterface';
 
 export function recurrenceCheck(
 	recurrence: IRecurrenceRule,
@@ -57,37 +57,23 @@ export function recurrenceCheck(
 	return false;
 }
 
-export function convertMonthToUnix(expression: string): string {
-	if (!isNaN(parseInt(expression)) || expression.includes('-') || expression.includes(',')) {
-		let matches = expression.match(/([0-9])+/g) as string[];
-		if (matches) {
-			matches = matches.map((match) =>
-				parseInt(match) !== 0 ? String(parseInt(match) - 1) : match,
-			);
-		}
-		expression = matches?.join(expression.includes('-') ? '-' : ',') || '';
-	}
-	return expression;
-}
+export const toCronExpression = (interval: ScheduleInterval): CronExpression => {
+	if (interval.field === 'cronExpression') return interval.expression;
+	if (interval.field === 'seconds') return `*/${interval.secondsInterval} * * * * *`;
+	if (interval.field === 'minutes') return `* */${interval.minutesInterval} * * * *`;
 
-export function convertToUnixFormat(interval: IDataObject) {
-	const expression = (interval.expression as string).split(' ');
-	if (expression.length === 5) {
-		expression[3] = convertMonthToUnix(expression[3]);
-		expression[4] = expression[4].replace('7', '0');
-	} else if (expression.length === 6) {
-		expression[4] = convertMonthToUnix(expression[4]);
-		expression[5] = expression[5].replace('7', '0');
-	}
-	interval.expression = expression.join(' ');
-}
+	const randomMinute = interval.triggerAtMinute ?? randomInt(0, 60);
+	if (interval.field === 'hours') return `* ${randomMinute} */${interval.hoursInterval} * * *`;
 
-export const addFallbackValue = <T>(enabled: boolean, fallback: T) => {
-	if (enabled) {
-		return (value: T) => {
-			if (!value) return fallback;
-			return value;
-		};
+	const randomHour = interval.triggerAtHour ?? randomInt(0, 24);
+	if (interval.field === 'days') return `* ${randomMinute} ${randomHour} * * *`;
+	if (interval.field === 'weeks') {
+		const days = interval.triggerAtDay;
+		const daysOfWeek = days.length === 0 ? '*' : days.join(',');
+		return `* ${randomMinute} ${randomHour} * * ${daysOfWeek}`;
 	}
-	return (value: T) => value;
+
+	const day = interval.triggerAtDayOfMonth ?? randomInt(0, 12);
+	// interval.field === 'months'
+	return `* ${randomMinute} ${randomHour} ${day} * *`;
 };
